@@ -59,33 +59,31 @@ class VideoSampler():
         
         
     def __image_shaping(self, image, ratio:[tuple, list, None]):
-        if ratio == None:
-            shaped_image = image
-        else:
-            if ratio[0] >= ratio[1]:
-                rotate = image.shape[0] > image.shape[1]
-            else:
-                rotate = image.shape[0] < image.shape[1]
+        if ratio != None:
+            if int(image.shape[1]/ratio[0]) != int(image.shape[0]/ratio[1]):
+	            if ratio[0] >= ratio[1]:
+	                rotate = image.shape[0] > image.shape[1]
+	            else:
+	                rotate = image.shape[0] < image.shape[1]
 
-            if rotate:
-                dire = np.random.randint(2)*2 + 1
-                image = np.rot90(image, dire)
+	            if rotate:
+	                dire = np.random.randint(2)*2 + 1
+	                image = np.rot90(image, dire)
 
-            w = image.shape[1]
-            h = image.shape[0]
+	            w = image.shape[1]
+	            h = image.shape[0]
 
-            cut_w = h - w*ratio[1]/ratio[0] < 0
-            if cut_w:
-                size = int(h*ratio[0] / ratio[1])
-                offset = np.random.randint(w - size + 1)
-                shaped_image = image[:, offset:offset+size]
+	            cut_w = h - w*ratio[1]/ratio[0] < 0
+	            if cut_w:
+	                size = int(h*ratio[0] / ratio[1])
+	                offset = np.random.randint(w - size + 1)
+	                shaped_image = image[:, offset:offset+size]
 
-            else:
-                size = int(w*ratio[1] / ratio[0])
-                offset = np.random.randint(h - size + 1)
-                shaped_image = image[offset:offset+size, :]   
-
-        return shaped_image
+	            else:
+	                size = int(w*ratio[1] / ratio[0])
+	                offset = np.random.randint(h - size + 1)
+	                shaped_image = image[offset:offset+size, :]   
+        return image
         
 
     
