@@ -14,12 +14,21 @@ class VideoSampler():
         self.output_format = 'jpg'
         """
         period_scale: 's', 'm', 'h'
-        output_shape: 'same', '1x1', '3x4', '16x9' 
         output_dir: '/' at the end
         """
         
+        self.output_shape = None
+        """
+        `output_shape` will ratate (random wise) and crop (random center) frames into a ratio. 
+        It should be (width, height) packed by tuple or list. Set "None" will turn off it.
+        """
     
-    def __create_dir(self, dir_path):
+    def __create_dir(self, dir_path):     
+        try:
+            assert dir_path[-1] == '/'
+        except:
+            raise AssertionError('The directory path should include "/" at the end.')
+            
         try:
             os.mkdir(dir_path)
         except:
@@ -36,14 +45,49 @@ class VideoSampler():
     
     
     def __time_scale(self, scale):
-        assert self.period_scale in ['s', 'm', 'h']
+        try:
+            assert self.period_scale in ['s', 'm', 'h']
+        except:
+            raise AssertionError('The period scale should be "s": second, "m": minute, or "h": hour.')
+            
         if self.period_scale == 's':
             return 1
         elif self.period_scale == 'm':
             return 60
         elif self.period_scale == 'h':
             return 3600
-            
+        
+        
+    def __image_shaping(self, image, ratio:[tuple, list, None]):
+        if ratio == None:
+            shaped_image = image
+        else:
+            if ratio[0] >= ratio[1]:
+                rotate = image.shape[0] > image.shape[1]
+            else:
+                rotate = image.shape[0] < image.shape[1]
+
+            if rotate:
+                dire = np.random.randint(2)*2 + 1
+                image = np.rot90(image, dire)
+
+            w = image.shape[1]
+            h = image.shape[0]
+
+            cut_w = h - w*ratio[1]/ratio[0] < 0
+            if cut_w:
+                size = int(h*ratio[0] / ratio[1])
+                offset = np.random.randint(w - size + 1)
+                shaped_image = image[:, offset:offset+size]
+
+            else:
+                size = int(w*ratio[1] / ratio[0])
+                offset = np.random.randint(h - size + 1)
+                shaped_image = image[offset:offset+size, :]   
+
+        return shaped_image
+        
+
     
     def load_video(self, path):
         self.vid = cv2.VideoCapture(path)
@@ -89,6 +133,7 @@ class VideoSampler():
                 success, frame = self.vid.read()
                 # detect frame
                 if success:
+                    frame = self.__image_shaping(frame, self.output_shape)
                     d_frame = frame.copy()
                     bbox = detector(d_frame)
                 n += 1
@@ -157,6 +202,7 @@ class VideoSampler():
         for f_no in sample_idx:
             self.vid.set(1, f_no)
             _, frame = self.vid.read()
+            frame = self.__image_shaping(frame, self.output_shape)
             name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
             cv2.imwrite(name, frame)
             idx = self.__show_progress(idx, len(sample_idx))
@@ -185,6 +231,7 @@ class VideoSampler():
         for f_no in sample_idx:
             self.vid.set(1, f_no)
             _, frame = self.vid.read()
+            frame = self.__image_shaping(frame, self.output_shape)
             name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
             cv2.imwrite(name, frame)
             idx = self.__show_progress(idx, total)
@@ -197,6 +244,7 @@ class VideoSampler():
         while self.vid.isOpened():
             success, frame = self.vid.read()
             if success:
+                frame = self.__image_shaping(frame, self.output_shape)
                 name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
                 cv2.imwrite(name, frame)
                 idx = self.__show_progress(idx, self.total_frames)
