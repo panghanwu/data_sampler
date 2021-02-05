@@ -12,6 +12,7 @@ class VideoSampler():
         self.period_scale = 's'
         self.output_dir = 'sampled_frames/'
         self.output_format = 'jpg'
+        self.do_alignment = True
         """
         period_scale: 's', 'm', 'h'
         output_dir: '/' at the end
@@ -57,34 +58,43 @@ class VideoSampler():
         elif self.period_scale == 'h':
             return 3600
         
-        
-    def __image_shaping(self, image, ratio:[tuple, list, None]):
+    
+    def __rotate_image(self, image, ratio:[tuple, list, None]):
         if ratio != None:
-            if int(image.shape[1]/ratio[0]) != int(image.shape[0]/ratio[1]):
-	            if ratio[0] >= ratio[1]:
-	                rotate = image.shape[0] > image.shape[1]
-	            else:
-	                rotate = image.shape[0] < image.shape[1]
+            if ratio[0] != ratio[1]:
+                def is_straight(w, h):
+                    return h > w
 
-	            if rotate:
-	                dire = np.random.randint(2)*2 + 1
-	                image = np.rot90(image, dire)
-
-	            w = image.shape[1]
-	            h = image.shape[0]
-
-	            cut_w = h - w*ratio[1]/ratio[0] < 0
-	            if cut_w:
-	                size = int(h*ratio[0] / ratio[1])
-	                offset = np.random.randint(w - size + 1)
-	                shaped_image = image[:, offset:offset+size]
-
-	            else:
-	                size = int(w*ratio[1] / ratio[0])
-	                offset = np.random.randint(h - size + 1)
-	                shaped_image = image[offset:offset+size, :]   
+                rotate = is_straight(image.shape[1]/image.shape[0]) == is_straight(ratio[0]/ratio[1])
+                if rotate:
+                    dire = np.random.randint(2)*2 + 1
+                    image = np.rot90(image, dire)
         return image
-        
+    
+    
+    def __cropping_image(self, image, ratio:[tuple, list, None]):
+        if ratio != None:
+            w = image.shape[1]
+            h = image.shape[0]
+            do_cropping = int(w/ratio[0]) != int(h/ratio[1])
+            if do_cropping:
+                cut_w = h/ratio[1] - w/ratio[0] < 0
+                if cut_w:
+                    size = int(h*ratio[0] / ratio[1])
+                    offset = np.random.randint(w - size + 1)
+                    image = image[:, offset:offset+size]
+                else:
+                    size = int(w*ratio[1] / ratio[0])
+                    offset = np.random.randint(h - size + 1)
+                    image = image[offset:offset+size, :]
+        return image
+    
+    
+    def __align_image(self, image, do_alignment, ratio:[tuple, list, None]):
+        if do_alignment:
+            image = self.__rotate_image(image, ratio)
+            image = self.__cropping_image(image, ratio)
+        return image
 
     
     def load_video(self, path):
@@ -131,7 +141,7 @@ class VideoSampler():
                 success, frame = self.vid.read()
                 # detect frame
                 if success:
-                    frame = self.__image_shaping(frame, self.output_shape)
+                    frame = self.__align_image(frame, self.do_alignment, self.output_shape)
                     d_frame = frame.copy()
                     bbox = detector(d_frame)
                 n += 1
@@ -200,7 +210,7 @@ class VideoSampler():
         for f_no in sample_idx:
             self.vid.set(1, f_no)
             _, frame = self.vid.read()
-            frame = self.__image_shaping(frame, self.output_shape)
+            frame = self.__align_image(frame, self.do_alignment, self.output_shape)
             name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
             cv2.imwrite(name, frame)
             idx = self.__show_progress(idx, len(sample_idx))
@@ -229,7 +239,7 @@ class VideoSampler():
         for f_no in sample_idx:
             self.vid.set(1, f_no)
             _, frame = self.vid.read()
-            frame = self.__image_shaping(frame, self.output_shape)
+            frame = self.__align_image(frame, self.do_alignment, self.output_shape)
             name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
             cv2.imwrite(name, frame)
             idx = self.__show_progress(idx, total)
@@ -237,15 +247,17 @@ class VideoSampler():
     
     
     def sample_all_frames(self):
+        self.__create_dir(self.output_dir)
         idx = 0
         self.vid.set(1, 0)
         while self.vid.isOpened():
             success, frame = self.vid.read()
             if success:
-                frame = self.__image_shaping(frame, self.output_shape)
+                frame = self.__align_image(frame, self.do_alignment, self.output_shape)
                 name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
                 cv2.imwrite(name, frame)
                 idx = self.__show_progress(idx, self.total_frames)
             else:
                 break
         print('Done sampling: totally {} frames.'.format(self.total_frames))
+        
