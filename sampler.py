@@ -12,7 +12,6 @@ class VideoSampler():
         self.period_scale = 's'
         self.output_dir = 'sampled_frames/'
         self.output_format = 'jpg'
-        self.do_alignment = True
         """
         period_scale: 's', 'm', 'h'
         output_dir: '/' at the end
@@ -57,19 +56,6 @@ class VideoSampler():
             return 60
         elif self.period_scale == 'h':
             return 3600
-        
-    
-    def __rotate_image(self, image, ratio:[tuple, list, None]):
-        if ratio != None:
-            if ratio[0] != ratio[1]:
-                def is_straight(w, h):
-                    return h > w
-
-                rotate = is_straight(image.shape[1]/image.shape[0]) == is_straight(ratio[0]/ratio[1])
-                if rotate:
-                    dire = np.random.randint(2)*2 + 1
-                    image = np.rot90(image, dire)
-        return image
     
     
     def __cropping_image(self, image, ratio:[tuple, list, None]):
@@ -87,13 +73,6 @@ class VideoSampler():
                     size = int(w*ratio[1] / ratio[0])
                     offset = np.random.randint(h - size + 1)
                     image = image[offset:offset+size, :]
-        return image
-    
-    
-    def __align_image(self, image, do_alignment, ratio:[tuple, list, None]):
-        if do_alignment:
-            image = self.__rotate_image(image, ratio)
-            image = self.__cropping_image(image, ratio)
         return image
 
     
@@ -130,6 +109,7 @@ class VideoSampler():
         
         bbox_list = []
         idx = 0
+        prgrs = 0
         for g in range(sample_size):
             # create sample group index and shuffle
             sample_idx = np.arange(0, group_size) + g*group_size
@@ -141,30 +121,31 @@ class VideoSampler():
                 success, frame = self.vid.read()
                 # detect frame
                 if success:
-                    frame = self.__align_image(frame, self.do_alignment, self.output_shape)
+                    frame = self.__cropping_image(frame, self.output_shape)
                     d_frame = frame.copy()
                     bbox = detector(d_frame)
-                n += 1
+                    n += 1
                 
-                # (1) save the frame if there is an object
-                # (2) operation when no object in this group
-                if bbox != None:
-                    name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
-                    cv2.imwrite(name, frame)
-                    if save_bbox:
-                        for b in bbox:
-                            line = [os.path.split(name)[-1]] + b
-                            bbox_list.append(line)
-                    break
-                    
-                elif n == group_size:
-                    if if_no_object == 'random':
+                    # (1) save the frame if there is an object
+                    # (2) operation when no object in this group
+                    if bbox != []:
                         name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
                         cv2.imwrite(name, frame)
+                        idx += 1
+                        if save_bbox:
+                            for b in bbox:
+                                line = [os.path.split(name)[-1]] + b
+                                bbox_list.append(line)
                         break
-                    else:
-                        break
-            idx = self.__show_progress(idx, sample_size)
+
+                    elif n == group_size:
+                        if if_no_object == 'random':
+                            name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
+                            cv2.imwrite(name, frame)
+                            break
+                        else:
+                            break
+            prgrs = self.__show_progress(prgrs, sample_size)
             
         if save_bbox:
             fields = ['xmin', 'ymin', 'xmax', 'ymax', 'label', 'image']
@@ -174,7 +155,7 @@ class VideoSampler():
                 csv_writer.writerow(fields)
                 csv_writer.writerows(bbox_list)
                 
-        print('Done sampling: totally {} frames.'.format(sample_size))
+        print('Done sampling: totally {} frames.'.format(idx))
     
     
     def sample_by_kmeans(self, pixel_stride=10, step=20):
@@ -210,7 +191,7 @@ class VideoSampler():
         for f_no in sample_idx:
             self.vid.set(1, f_no)
             _, frame = self.vid.read()
-            frame = self.__align_image(frame, self.do_alignment, self.output_shape)
+            frame = self.__cropping_image(frame, self.output_shape)
             name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
             cv2.imwrite(name, frame)
             idx = self.__show_progress(idx, len(sample_idx))
@@ -239,7 +220,7 @@ class VideoSampler():
         for f_no in sample_idx:
             self.vid.set(1, f_no)
             _, frame = self.vid.read()
-            frame = self.__align_image(frame, self.do_alignment, self.output_shape)
+            frame = self.__cropping_image(frame, self.output_shape)
             name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
             cv2.imwrite(name, frame)
             idx = self.__show_progress(idx, total)
@@ -253,7 +234,7 @@ class VideoSampler():
         while self.vid.isOpened():
             success, frame = self.vid.read()
             if success:
-                frame = self.__align_image(frame, self.do_alignment, self.output_shape)
+                frame = self.__cropping_image(frame, self.output_shape)
                 name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
                 cv2.imwrite(name, frame)
                 idx = self.__show_progress(idx, self.total_frames)
