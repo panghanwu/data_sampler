@@ -94,17 +94,19 @@ class VideoSampler():
                                                                     self.fps))
     
     
-    def sample_by_detector(self, detector, if_no_object='random', save_bbox=True):
+    def sample_by_detector(self, detector, skip_ratio:float=1, save_bbox:bool=True):
         """
-        The `detector` is a function.
-        It should be inputted a numpy array image and return objection with the following format:
+        detector: is a function. It should be inputted a numpy array image and return objection with the following format:
         [[xmin,ymin,xmax,ymax,label], [xmin,ymin,xmax,ymax,label], ...]
+
+        skip_ratio: skip sampling after detecting "skip_ratio" of total frames in an interval to avoid too long sampling time.
+        save_bbox: save bounding-box data as csv-file.
         """
-        assert if_no_object in [None, 'random']
+        assert 0. < skip_ratio <= 1.
         self.__create_dir(self.output_dir)  # create folder
         
         group_size = int(self.sample_period * self.__time_scale(self.period_scale) * self.fps)
-        sample_size = self.total_frames // int(group_size)
+        sample_size = self.total_frames // group_size
         assert sample_size > 0
         
         bbox_list = []
@@ -114,8 +116,11 @@ class VideoSampler():
             # create sample group index and shuffle
             sample_idx = np.arange(0, group_size) + g*group_size
             np.random.shuffle(sample_idx)
+            
+            # do sampling in this group
             n = 0
-            while True:
+            please_stop = skip_ratio * group_size
+            while n < please_stop:
                 f_no = sample_idx[n]
                 self.vid.set(1, f_no)
                 success, frame = self.vid.read()
@@ -127,7 +132,6 @@ class VideoSampler():
                     n += 1
                 
                     # (1) save the frame if there is an object
-                    # (2) operation when no object in this group
                     if bbox != []:
                         name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
                         cv2.imwrite(name, frame)
@@ -138,13 +142,6 @@ class VideoSampler():
                                 bbox_list.append(line)
                         break
 
-                    elif n == group_size:
-                        if if_no_object == 'random':
-                            name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
-                            cv2.imwrite(name, frame)
-                            break
-                        else:
-                            break
             prgrs = self.__show_progress(prgrs, sample_size)
             
         if save_bbox:
