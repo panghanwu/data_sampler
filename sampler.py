@@ -153,6 +153,8 @@ class VideoSampler():
                 csv_writer.writerows(bbox_list)
                 
         print('Done sampling: totally {} frames.'.format(idx))
+        
+        return idx
     
     
     def sample_by_kmeans(self, pixel_stride=10, step=20):
@@ -193,6 +195,8 @@ class VideoSampler():
             cv2.imwrite(name, frame)
             idx = self.__show_progress(idx, len(sample_idx))
         print('Done sampling: totally {} frames.'.format(len(sample_idx)))
+
+        return len(sample_idx)
         
     
     def sample_by_uniform(self, mode='random'):
@@ -222,6 +226,8 @@ class VideoSampler():
             cv2.imwrite(name, frame)
             idx = self.__show_progress(idx, total)
         print('Done sampling: totally {} frames.'.format(total))
+
+        return total
     
     
     def sample_all_frames(self):
@@ -238,4 +244,6 @@ class VideoSampler():
             else:
                 break
         print('Done sampling: totally {} frames.'.format(self.total_frames))
+
+        return self.total_frame
         
