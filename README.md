@@ -1,6 +1,9 @@
 # Data Sampler
 
-This script helps you sample frames from your target video.
+This script helps you sample:
+
+- frames from your target video
+- Images from a bunch of images
 
 ## Requirements
 
