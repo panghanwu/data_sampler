@@ -11,7 +11,7 @@ This script helps you sample frames from your target video.
 
 ## Main Features
 
-### Video sampler
+### `VideoSampler`
 
 - All frames extracting
 - Uniform sampling
@@ -19,7 +19,7 @@ This script helps you sample frames from your target video.
 - K-means sampling 
 - Sampling by detector (better for bounding-box form)
 
-### Image sampler
+### `ImageSampler`
 
 ## Details
 
