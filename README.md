@@ -1,4 +1,4 @@
-# Video Sampler
+# Data Sampler
 
 This script helps you sample frames from your target video.
 
@@ -11,14 +11,18 @@ This script helps you sample frames from your target video.
 
 ## Main Features
 
+### Video sampler
+
 - All frames extracting
 - Uniform sampling
 - Uniformly random sampling
 - K-means sampling 
 - Sampling by detector (better for bounding-box form)
 
+### Image sampler
+
 ## Details
 
 ## Examples
 
-Please see `example.ipynb`.
+Please see `example_video.ipynb` and `example_image.ipynb`.
