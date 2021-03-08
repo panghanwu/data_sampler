@@ -219,7 +219,7 @@ class VideoSampler(Sampler):
         for g in range(sample_size):
             # create sample group index and shuffle
             sample_idx = np.arange(0, group_size) + g*group_size  
-            numpy.random.choice(sample_idx, size=int(skip_ratio*group_size), replace=False)
+            np.random.choice(sample_idx, size=int(skip_ratio*group_size), replace=False)
             
             # do sampling in this group
             for f_no in sample_idx:
