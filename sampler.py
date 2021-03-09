@@ -178,11 +178,10 @@ class VideoSampler(Sampler):
                 break
                 
         # cluster
-        print('---Clustering Initializing---')
+        print('Clustering initializing...')
         vectors = np.array(vectors)
         estimator = KMeans(n_clusters=cluster_n, n_init=1, verbose=1)
         estimator.fit(vectors)
-        print('---Coverage---')
         centers = estimator.cluster_centers_
         # get index of the nearest center frames
         sample_idx, _ = pairwise_distances_argmin_min(centers, vectors)
@@ -216,6 +215,7 @@ class VideoSampler(Sampler):
         
         bbox_list = []
         prgrs = 0
+        total = 0
         for g in range(sample_size):
             # create sample group index and shuffle
             sample_idx = np.arange(0, group_size) + g*group_size  
@@ -235,6 +235,7 @@ class VideoSampler(Sampler):
                     if bbox != []:
                         name = self.output_dir + self.name + '_{:0>6d}.'.format(f_no) + self.output_format
                         cv2.imwrite(name, frame)
+                        total += 1
                         if save_bbox:
                             for b in bbox:
                                 line = [os.path.split(name)[-1]] + b
@@ -251,8 +252,8 @@ class VideoSampler(Sampler):
                 csv_writer.writerow(fields)
                 csv_writer.writerows(bbox_list)
                 
-        print('Done sampling: totally {} frames.'.format(idx))
-        return idx   
+        print('Done sampling: totally {} frames.'.format(total))
+        return total 
     
     
     
@@ -315,11 +316,10 @@ class ImageSampler(Sampler):
             prgrs = self._Sampler__show_progress(prgrs, total, title='Initializing')
         
         # cluster
-        print('---Clustering initializing---')
+        print('Clustering initializing...')
         vectors = np.array(vectors)
         estimator = KMeans(n_clusters=cluster_n, n_init=1, verbose=1)
         estimator.fit(vectors)
-        print('---Coverage---')
         centers = estimator.cluster_centers_
         # get index of the nearest center frames
         sample_idx, _ = pairwise_distances_argmin_min(centers, vectors)
