@@ -374,7 +374,7 @@ class ImageSampler(Sampler):
             name = f'{self.output_dir}anno.csv'
             with open(name, 'w', newline='') as csvfile:
                 csv_writer = csv.writer(csvfile)
-                if fields in not None:
+                if fields is not None:
                     csv_writer.writerows(fields)
                 csv_writer.writerows(bbox_list)
                 
