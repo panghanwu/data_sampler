@@ -212,7 +212,7 @@ class VideoSampler(Sampler):
         return len(sample_idx)
     
     
-    def sample_by_detector(self, detector, save_bbox:bool=True, title=None):
+    def sample_by_detector(self, detector, save_bbox:bool=True, title=None, fields:list=None):
         """Sampling frames if the detector get objects.
         
         Args:
@@ -262,6 +262,8 @@ class VideoSampler(Sampler):
             name = f'{self.output_dir}{self.name}_anno.csv'
             with open(name, 'w', newline='') as csvfile:
                 csv_writer = csv.writer(csvfile)
+                if fields is not None:
+                    csv_writer.writerow(fields)
                 csv_writer.writerows(bbox_list)
                 
         print(f'Totally {counter} frames sampling completed.')
@@ -340,7 +342,7 @@ class ImageSampler(Sampler):
         return len(sample_list)
     
     
-    def sample_by_detector(self, detector, save_bbox:bool=True, title=None):
+    def sample_by_detector(self, detector, save_bbox:bool=True, title=None, fields:list=None):
         self.create_dir(self.output_dir)  # create folder
         
         # create n_sample random sample indexes
@@ -372,6 +374,8 @@ class ImageSampler(Sampler):
             name = f'{self.output_dir}anno.csv'
             with open(name, 'w', newline='') as csvfile:
                 csv_writer = csv.writer(csvfile)
+                if fields in not None:
+                    csv_writer.writerows(fields)
                 csv_writer.writerows(bbox_list)
                 
         print(f'Totally {counter} frames sampling completed.')
