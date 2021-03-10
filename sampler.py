@@ -1,5 +1,6 @@
 from sklearn.cluster import KMeans
 from sklearn.metrics import pairwise_distances_argmin_min
+from tqdm import tqdm
 import numpy as np
 import csv
 import cv2
@@ -7,18 +8,24 @@ import os
 import shutil
 
 
+# TODO random
+# TODO tqdm
+
 
 class Sampler:
-    def __init__(self):
-        self.output_dir = 'samples/'
-        self.output_shape = None
-        """
-        `output_shape` will ratate (random wise) and crop (random center) frames into a ratio. 
-        It should be (width, height) packed by tuple or list. Set "None" will turn off it.
-        """
-    
-    
-    def __create_dir(self, dir_path):     
+    """Parent Class of other sampler.
+
+    Attributes:
+        n_samples   : How many samples will be extracted.
+        output_dir  : Output directory path.
+
+    """
+    def __init__(self):        
+        self.n_samples = 1
+        self.output_dir = 'outputs/'
+        
+
+    def create_dir(self, dir_path):     
         if dir_path != '':
             if dir_path[-1] != '/':
                 dir_path += '/'
@@ -28,22 +35,6 @@ class Sampler:
             except:
                 pass
 
-                
-    def __show_progress(self, progress, total, title='Sampling'):
-        progress += 1
-        print(
-            '[{}]:[{:<30s}] {:5.1f}%'.format(
-                title, 
-                '█'*int(progress*30 / total), 
-                progress / total*100
-                ), 
-            end='\r'
-        )
-        
-        if progress == total:
-            print()
-        return progress
-    
     
     def cropping_image(self, image, ratio:[tuple, list, None]):
         if ratio != None:
@@ -65,14 +56,25 @@ class Sampler:
     
 
 class VideoSampler(Sampler):
+    """A sampler for video.
+
+    Attributes:
+        n_samples    : How many samples will be extracted.
+        output_dir   : Output directory path.
+        output_shape : A tuple expressed as (width, height). Image Sample will 
+                       be cropped randomly according shape ratio.
+        output_format: Format of output frames.
+        output_shape : A tuple expressed as (width, height). Image Sample will 
+                       be cropped randomly according shape ratio.
+    
+        After use "VideoSampler.load()" load a video, the information can be getten by:
+            total_frames, width, height, fps.
+
+    """
     def __init__(self):
         super(VideoSampler, self).__init__()
         self.output_format = 'jpg'
-        self.sample_period = 1
-        self.period_scale = 's' 
-        """
-        period_scale: 's', 'm', 'h'
-        """
+        self.output_shape = None
     
     
     def __time_scale(self, scale):
@@ -89,7 +91,11 @@ class VideoSampler(Sampler):
             return 3600
 
     
-    def load_video(self, path):
+    def load(self, path, show_info=True):
+        """Load video and refresh video infomation.
+        This function should be conducted every time when the target video changed.
+        """
+
         self.vid = cv2.VideoCapture(path)
         
         self.width = int(self.vid.get(3))
@@ -97,163 +103,170 @@ class VideoSampler(Sampler):
         self.fps = self.vid.get(5)
         self.total_frames = int(self.vid.get(7))
         
-        name = os.path.split(path)[-1]
+        name = os.path.basename(path)
         self.name = os.path.splitext(name)[0]
         
-        print('Load video "{}" successfully.'.format(self.name))
-        print('Totally {} frames, w = {}, h = {}, FPS = {}.'.format(self.total_frames,
-                                                                    self.width, 
-                                                                    self.height, 
-                                                                    self.fps))
+        if show_info:
+            print(f'Load video "{self.name}" successfully.')
+            print(f'Totally {self.total_frames} frames, w = {self.width}, h = {self.height}, FPS = {self.fps}.')
     
     
-    def sample_all_frames(self):
-        self._Sampler__create_dir(self.output_dir)
-        idx = 0
+    def sample_all_frames(self, title=None):
+        """Extract all frames from the target video.
+        Returns: Total frames sampled.
+        """
+        self.create_dir(self.output_dir)
         self.vid.set(1, 0)  # restart video
-        while self.vid.isOpened():
-            success, frame = self.vid.read()
-            if success:
-                frame = self.cropping_image(frame, self.output_shape)
-                name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
-                cv2.imwrite(name, frame)
-                idx = self._Sampler__show_progress(idx, self.total_frames)
-            else:
-                break
-        print('Done sampling: totally {} frames.'.format(self.total_frames))
+        
+        with tqdm(total=self.total_frames, desc=title, unit='f') as pbar:  # progress bar
+            while self.vid.isOpened():
+                success, frame = self.vid.read()
+                if success:
+
+                    if self.output_shape is not None:  # crop image
+                        frame = self.cropping_image(frame, self.output_shape)
+
+                    f_no = int(self.vid.get(0))
+                    name = f'{self.output_dir}{self.name}_{f_no:0>6d}.{self.output_format}'
+                    cv2.imwrite(name, frame)  # save image
+                    pbar.update(1)  # update progress bar
+                else:
+                    break
+
+        print(f'Totally {len(sample_idx)} frames sampling completed.')
+
         return self.total_frames
     
     
-    def sample_by_uniform(self, mode='random'):
+    def sample_by_uniform(self, mode='random', title=None):
         assert mode in ['random', 'center']
-        self._Sampler__create_dir(self.output_dir)  # create folder
-        prgrs = 0
+        self.create_dir(self.output_dir)  # create folder
         
-        group_size = int(self.sample_period * self.__time_scale(self.period_scale) * self.fps)
-        sample_size = self.total_frames // int(group_size)
-        assert sample_size > 0
-
-        # generate index list of frames to sample
+        # create n_sample sample indexes by mode
+        sample_idx = np.arange(self.total_frames)
         if mode == 'random':
-            sample_idx = [int(np.random.randint(group_size)+(group_size*i)) for i in range(sample_size)]
+            sample_idx = np.random.choice(sample_idx, self.n_samples, replace=False)
         elif mode == 'center':
-            sample_idx = [int(group_size*(i+0.5)) for i in range(sample_size)]
-        
-        total = len(sample_idx)
-        idx = 0
+            interval = self.total_frames // self.n_samples
+            sample_idx = sample_idx[::interval]
+        sample_idx = tqdm(sample_idx, desc=title, unit='f')
 
         # save frames in sample list
         for f_no in sample_idx:
             self.vid.set(1, f_no)
             _, frame = self.vid.read()
-            frame = self.cropping_image(frame, self.output_shape)
-            name = self.output_dir + self.name + '_{:0>6d}.'.format(idx) + self.output_format
-            cv2.imwrite(name, frame)
-            idx = self._Sampler__show_progress(idx, total)
-        print('Done sampling: totally {} frames.'.format(total))
 
-        return total    
+            if self.output_shape is not None:  # crop image
+                frame = self.cropping_image(frame, self.output_shape)
+
+            name = f'{self.output_dir}{self.name}_{f_no:0>6d}.{self.output_format}'
+            cv2.imwrite(name, frame)
+
+        print(f'Totally {len(sample_idx)} frames sampling completed.')
+
+        return len(sample_idx)
     
 
     def sample_by_kmeans(self, pixel_stride=10):
-        self._Sampler__create_dir(self.output_dir)  # create folder
-        group_size = int(self.sample_period * self.__time_scale(self.period_scale) * self.fps)
-        cluster_n = self.total_frames // int(group_size)
-        vectors = []
-        
+        self.create_dir(self.output_dir)  # create folder
+
         self.vid.set(1, 0) # restart video
         # pixel sampling
-        total = self.total_frames
-        prgrs = 0
-        while self.vid.isOpened():
-            success, frame = self.vid.read()
-            if success:
-                # sampling with stride
-                img_sample = frame[::pixel_stride, ::pixel_stride, :]
-                # reshape to 1D
-                img_sample = img_sample.reshape(-1)
-                vectors.append(img_sample)
-                prgrs = self._Sampler__show_progress(prgrs, total, title='Initializing')
-            else:
-                break
+        vectors = []
+        with tqdm(total=self.total_frames, desc='Initializing', unit='f') as pbar:  # progress bar
+            while self.vid.isOpened():
+                success, frame = self.vid.read()
+                if success:
+                    # sampling with stride
+                    img_sample = frame[::pixel_stride, ::pixel_stride, :]
+                    # reshape to 1D
+                    img_sample = img_sample.reshape(-1)
+                    vectors.append(img_sample)
+                    pbar.update(1)  # update progress bar
+                else:
+                    break
                 
         # cluster
         print('Clustering initializing...')
         vectors = np.array(vectors)
-        estimator = KMeans(n_clusters=cluster_n, n_init=1, verbose=1)
+        estimator = KMeans(n_clusters=self.n_samples, n_init=1, verbose=1)
         estimator.fit(vectors)
         centers = estimator.cluster_centers_
         # get index of the nearest center frames
         sample_idx, _ = pairwise_distances_argmin_min(centers, vectors)
         
-        prgrs = 0
-        for f_no in sample_idx:
-            self.vid.set(1, f_no)
-            _, frame = self.vid.read()
-            frame = self.cropping_image(frame, self.output_shape)
-            name = self.output_dir + self.name + '_{:0>6d}.'.format(f_no) + self.output_format
-            cv2.imwrite(name, frame)
-            prgrs = self._Sampler__show_progress(prgrs, len(sample_idx))
-        print('Done sampling: totally {} frames.'.format(len(sample_idx)))
+        with tqdm(total=len(sample_idx), desc='Sampling', unit='f') as pbar:  # progress bar
+            for f_no in sample_idx:
+                self.vid.set(1, f_no)
+                _, frame = self.vid.read()
+
+                if self.output_shape is not None:  # crop image
+                    frame = self.cropping_image(frame, self.output_shape)
+
+                name = f'{self.output_dir}{self.name}_{f_no:0>6d}.{self.output_format}'
+                cv2.imwrite(name, frame)
+                pbar.update(1)  # update progress bar
+
+        print(f'Totally {len(sample_idx)} frames sampling completed.')
+
         return len(sample_idx)
     
     
-    def sample_by_detector(self, detector, skip_ratio:float=1, save_bbox:bool=True):
-        """
-        detector: is a function. It should be inputted a numpy array image and return objection with the following format:
-        [[xmin,ymin,xmax,ymax,label], [xmin,ymin,xmax,ymax,label], ...]
+    def sample_by_detector(self, detector, save_bbox:bool=True, title=None):
+        """Sampling frames if the detector get objects.
+        
+        Args:
+            detector : A function. Its input is numpy array, and returns list for example:
+                       [label, xmin, ymin, xmax, ymax]
+                       It needs to notice that the channels shold be (B, G, R) because of OpenCV.
+            mode     : Assert in "random" and "uniform".
+            save_bbox: save bounding-box data as csv-file.
 
-        skip_ratio: skip sampling after detecting "skip_ratio" of total frames in an interval to avoid too long sampling time.
-        save_bbox: save bounding-box data as csv-file.
+        Returns: None
+        Raises: None
         """
-        assert 0. < skip_ratio <= 1.
-        self._Sampler__create_dir(self.output_dir)  # create folder
         
-        group_size = int(self.sample_period * self.__time_scale(self.period_scale) * self.fps)
-        sample_size = self.total_frames // group_size
-        assert sample_size > 0
+        self.create_dir(self.output_dir)  # create folder
         
-        bbox_list = []
-        prgrs = 0
-        total = 0
-        for g in range(sample_size):
-            # create sample group index and shuffle
-            sample_idx = np.arange(0, group_size) + g*group_size  
-            np.random.choice(sample_idx, size=int(skip_ratio*group_size), replace=False)
-            
-            # do sampling in this group
-            for f_no in sample_idx:
-                self.vid.set(1, f_no)
-                success, frame = self.vid.read()
-                # detect frame
-                if success:
+        # create n_sample random sample indexes
+        sample_idx = np.arange(self.total_frames)
+        sample_idx = np.random.choice(sample_idx, self.n_samples, replace=False)
+        sample_idx = tqdm(sample_idx, desc=title, unit='f')
+
+        if save_bbox:
+            bbox_list = []  # bbox container
+        
+        counter = 0
+        # sample if detects objects
+        for f_no in sample_idx:
+            self.vid.set(1, f_no)
+            _, frame = self.vid.read()
+
+            if self.output_shape is not None:  # crop image
                     frame = self.cropping_image(frame, self.output_shape)
-                    d_frame = frame.copy()
-                    bbox = detector(d_frame)
-                
-                    # (1) save the frame if there is an object
-                    if bbox != []:
-                        name = self.output_dir + self.name + '_{:0>6d}.'.format(f_no) + self.output_format
-                        cv2.imwrite(name, frame)
-                        total += 1
-                        if save_bbox:
-                            for b in bbox:
-                                line = [os.path.split(name)[-1]] + b
-                                bbox_list.append(line)
-                        break
 
-            prgrs = self._Sampler__show_progress(prgrs, sample_size)
+            # detect frame
+            bbox = detector(frame)
+            
+            # (1) save the frame if there is an object
+            if bbox != []:
+                name = f'{self.output_dir}{self.name}_{f_no:0>6d}.{self.output_format}'
+                cv2.imwrite(name, frame)
+                if save_bbox:
+                    for b in bbox:
+                        line = [os.path.basename(name)] + b
+                        bbox_list.append(line)
+                counter += 1
             
         if save_bbox:
-            fields = ['xmin', 'ymin', 'xmax', 'ymax', 'label', 'image']
-            name = self.output_dir + self.name + '_anno.csv'
-            with open(name, 'w') as csvfile:
+            name = f'{self.output_dir}{self.name}_anno.csv'
+            with open(name, 'w', newline='') as csvfile:
                 csv_writer = csv.writer(csvfile)
-                csv_writer.writerow(fields)
                 csv_writer.writerows(bbox_list)
                 
-        print('Done sampling: totally {} frames.'.format(total))
-        return total 
+        print(f'Totally {counter} frames sampling completed.')
+
+        return counter
     
     
     
@@ -261,7 +274,6 @@ class ImageSampler(Sampler):
     def __init__(self):
         super(ImageSampler, self).__init__()
         self.image_path_list = []
-        self.sample_ratio = 0.3
         self.copy_image = True
     
     
@@ -279,46 +291,40 @@ class ImageSampler(Sampler):
     
     def sample_by_uniform(self, mode='random'):
         assert mode in ['random', 'center']
-        self._Sampler__create_dir(self.output_dir)  # create folder
-        prgrs = 0
-        
-        assert self.sample_ratio > 0
-        sample_size = int(len(self.image_path_list)*self.sample_ratio)
-
-        
+        self.create_dir(self.output_dir)  # create folder
         # get sample list
         if mode == 'random':
-            sample_list = list(np.random.choice(self.image_path_list, size=sample_size, replace=False))
+            sample_list = np.random.choice(self.image_path_list, self.n_samples, replace=False)
         elif mode == 'center':
-            sample_list = self.image_path_list[::int(1/self.sample_ratio)]
+            interval = len(self.image_path_list) // self.n_samples
+            sample_list = self.image_path_list[::interval]
         
         self.__save_samples(sample_list)
 
-        print('Done sampling: totally {} images.'.format(len(sample_list)))
+        print(f'Totally {len(sample_list)} images sampling completed.')
+
         return len(sample_list)
     
     
     def sample_by_kmeans(self, pixel_stride=10):
-        self._Sampler__create_dir(self.output_dir)  # create folder
-        cluster_n = int(len(self.image_path_list)*self.sample_ratio)
+        self.create_dir(self.output_dir)  # create folder
         vectors = []
-        
+
         # pixel sampling
-        total = len(self.image_path_list)
-        prgrs = 0
-        for img_path in self.image_path_list:
-            img =cv2.imread(img_path)
-            # sampling with stride
-            img_sample = img[::pixel_stride, ::pixel_stride, :]
-            # reshape to 1D
-            img_sample = img_sample.reshape(-1)
-            vectors.append(img_sample)
-            prgrs = self._Sampler__show_progress(prgrs, total, title='Initializing')
+        with tqdm(total=len(self.image_path_list), desc='Initializing', unit='f') as pbar:
+            for img_path in self.image_path_list:
+                img =cv2.imread(img_path)
+                # sampling with stride
+                img_sample = img[::pixel_stride, ::pixel_stride, :]
+                # reshape to 1D
+                img_sample = img_sample.reshape(-1)
+                vectors.append(img_sample)
+                pbar.update(1)  # update progress bar
         
         # cluster
         print('Clustering initializing...')
         vectors = np.array(vectors)
-        estimator = KMeans(n_clusters=cluster_n, n_init=1, verbose=1)
+        estimator = KMeans(n_clusters=self.n_samples, n_init=1, verbose=1)
         estimator.fit(vectors)
         centers = estimator.cluster_centers_
         # get index of the nearest center frames
@@ -328,9 +334,50 @@ class ImageSampler(Sampler):
         sample_list = [self.image_path_list[i] for i in sample_idx]
             
         self.__save_samples(sample_list)
-        print('Done sampling: totally {} images.'.format(len(sample_list)))
+
+        print(f'Totally {len(sample_list)} images sampling completed.')
+
         return len(sample_list)
     
     
-    def sample_by_detector(self, detector, skip_ratio:float=1, save_bbox:bool=True):
-        pass
+    def sample_by_detector(self, detector, save_bbox:bool=True, title=None):
+        self.create_dir(self.output_dir)  # create folder
+        
+        # create n_sample random sample indexes
+        raw_list = np.random.choice(self.image_path_list, self.n_samples, replace=False)
+        raw_list = tqdm(raw_list, desc=title, unit='f')
+
+        if save_bbox:
+            bbox_list = []  # bbox container
+        
+        counter = 0
+        sample_list = []
+        # sample if detects objects
+        for img_path in raw_list:
+            img = cv2.imread(img_path)
+            # detect frame
+            bbox = detector(img)
+            
+            # (1) save the frame if there is an object
+            if bbox != []:
+                sample_list.append(img_path)
+                if save_bbox:
+                    for b in bbox:
+                        bbox_list.append(b)
+                counter += 1
+        
+        self.__save_samples(sample_list)  # save samples
+
+        if save_bbox:
+            name = f'{self.output_dir}anno.csv'
+            with open(name, 'w', newline='') as csvfile:
+                csv_writer = csv.writer(csvfile)
+                csv_writer.writerows(bbox_list)
+                
+        print(f'Totally {counter} frames sampling completed.')
+
+        return counter
+
+
+    def __len__(self):
+        return len(self.image_path_list)
